@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Home Energy System</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+
+  <!-- AUTH SCREEN -->
+  <div id="auth-screen" class="auth-screen">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <div class="logo-icon">&#9889;</div>
+        <h1>EnergyHome</h1>
+      </div>
+      <div class="tab-row">
+        <button class="tab-btn active" onclick="switchTab('login')">Login</button>
+        <button class="tab-btn" onclick="switchTab('register')">Register</button>
+      </div>
+      <div id="auth-error" class="auth-error hidden"></div>
+
+      <div id="login-form">
+        <input type="email" id="login-email" placeholder="Email" />
+        <input type="password" id="login-password" placeholder="Password" />
+        <button class="btn-primary" onclick="login()">Sign in</button>
+        <p class="demo-hint">Demo: <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="ceaaaba3a18eaba0abbca9b7e0ada1a3">[email&#160;protected]</a> / demo1234</p>
+      </div>
+
+      <div id="register-form" class="hidden">
+        <input type="text" id="reg-name" placeholder="Your name" />
+        <input type="email" id="reg-email" placeholder="Email" />
+        <input type="password" id="reg-password" placeholder="Password (min 6 chars)" />
+        <button class="btn-primary" onclick="register()">Create account</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN APP -->
+  <div id="app" class="hidden">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <span class="logo-icon-sm">&#9889;</span>
+        <span>EnergyHome</span>
+      </div>
+      <nav>
+        <a href="#" class="nav-link active" onclick="showPage('dashboard', this)">
+          <span class="nav-icon">&#9636;</span> Dashboard
+        </a>
+        <a href="#" class="nav-link" onclick="showPage('analytics', this)">
+          <span class="nav-icon">&#9650;</span> Analytics
+        </a>
+        <a href="#" class="nav-link" onclick="showPage('devices', this)">
+          <span class="nav-icon">&#9675;</span> Devices
+        </a>
+        <a href="#" class="nav-link" onclick="showPage('alerts', this)">
+          <span class="nav-icon">&#9651;</span> Alerts
+          <span id="alert-badge" class="badge hidden">0</span>
+        </a>
+        <a href="#" class="nav-link" onclick="showPage('settings', this)">
+          <span class="nav-icon">&#9965;</span> Settings
+        </a>
+        <a href="#" class="nav-link" onclick="showPage('profile', this)">
+          <span class="nav-icon">&#9673;</span> Profile
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <span id="user-name-sidebar"></span>
+        <button onclick="logout()" class="btn-logout">Logout</button>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="main-content">
+
+      <!-- DASHBOARD PAGE -->
+      <div id="page-dashboard" class="page active">
+        <div class="page-header">
+          <h2>Dashboard</h2>
+          <div class="live-indicator"><span class="pulse"></span> Live</div>
+        </div>
+
+        <div class="stat-grid">
+          <div class="stat-card">
+            <div class="stat-label">Current usage</div>
+            <div class="stat-value" id="stat-watts">— W</div>
+            <div class="stat-sub" id="stat-source">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Battery level</div>
+            <div class="stat-value" id="stat-battery">— %</div>
+            <div class="battery-bar"><div id="battery-fill" class="battery-fill"></div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Solar generation</div>
+            <div class="stat-value" id="stat-solar">— W</div>
+            <div class="stat-sub">Today</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">24h avg usage</div>
+            <div class="stat-value" id="stat-avg">— W</div>
+            <div class="stat-sub">Last 24 hours</div>
+          </div>
+        </div>
+
+        <div class="chart-grid">
+          <div class="chart-card wide">
+            <div class="chart-title">Energy usage — last 24 hours</div>
+            <canvas id="chart-usage" height="100"></canvas>
+          </div>
+          <div class="chart-card">
+            <div class="chart-title">Source breakdown</div>
+            <canvas id="chart-source" height="180"></canvas>
+          </div>
+        </div>
+
+        <!-- Recent alerts -->
+        <div class="section-card">
+          <div class="section-header">
+            <h3>Recent alerts</h3>
+            <button class="btn-sm" onclick="showPage('alerts', null)">View all</button>
+          </div>
+          <div id="recent-alerts-list"><p class="empty-state">No recent alerts</p></div>
+        </div>
+      </div>
+
+      <!-- ANALYTICS PAGE -->
+      <div id="page-analytics" class="page hidden">
+        <div class="page-header"><h2>Analytics</h2></div>
+        <div class="chart-grid">
+          <div class="chart-card wide">
+            <div class="chart-title">Daily usage — last 30 days</div>
+            <canvas id="chart-daily" height="100"></canvas>
+          </div>
+          <div class="chart-card wide">
+            <div class="chart-title">Peak consumption by hour</div>
+            <canvas id="chart-peak" height="100"></canvas>
+          </div>
+        </div>
+        <div class="section-card prediction-card">
+          <h3>Next-day prediction</h3>
+          <div class="prediction-val" id="prediction-val">Calculating...</div>
+          <div class="prediction-sub" id="prediction-sub"></div>
+        </div>
+      </div>
+
+      <!-- DEVICES PAGE -->
+      <div id="page-devices" class="page hidden">
+        <div class="page-header">
+          <h2>Devices</h2>
+          <button class="btn-primary" onclick="openAddDevice()">+ Add device</button>
+        </div>
+        <div id="devices-list" class="devices-grid"></div>
+
+        <div id="device-modal" class="modal hidden">
+          <div class="modal-card">
+            <h3>Add device</h3>
+            <input type="text" id="device-name" placeholder="Device name" />
+            <select id="device-type">
+              <option value="solar_panel">Solar panel</option>
+              <option value="battery">Battery</option>
+              <option value="appliance">Appliance</option>
+              <option value="meter">Meter</option>
+            </select>
+            <input type="text" id="device-location" placeholder="Location (e.g. Roof)" />
+            <input type="number" id="device-watts" placeholder="Rated watts" />
+            <div class="modal-actions">
+              <button class="btn-secondary" onclick="closeAddDevice()">Cancel</button>
+              <button class="btn-primary" onclick="addDevice()">Add</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ALERTS PAGE -->
+      <div id="page-alerts" class="page hidden">
+        <div class="page-header">
+          <h2>Alerts</h2>
+          <button class="btn-sm" onclick="clearAlerts()">Clear read</button>
+        </div>
+        <div id="alerts-list"></div>
+      </div>
+
+      <!-- SETTINGS PAGE -->
+      <div id="page-settings" class="page hidden">
+        <div class="page-header"><h2>Settings</h2></div>
+        <div class="section-card">
+          <h3>Alert thresholds</h3>
+          <div class="setting-row">
+            <label>Max usage alert (watts)</label>
+            <input type="number" id="set-maxwatts" value="3000" style="width:120px" />
+          </div>
+          <div class="setting-row">
+            <label>Low battery alert (%)</label>
+            <input type="number" id="set-minbattery" value="20" style="width:120px" />
+          </div>
+          <button class="btn-primary" onclick="saveSettings()">Save settings</button>
+          <div id="settings-msg" class="hidden" style="color:#1D9E75;margin-top:10px;font-size:14px;">Saved!</div>
+        </div>
+
+        <div class="section-card" style="margin-top:1rem;">
+          <h3>Add test reading</h3>
+          <div class="setting-row">
+            <label>Watts</label>
+            <input type="number" id="test-watts" value="1500" style="width:120px" />
+          </div>
+          <div class="setting-row">
+            <label>Source</label>
+            <select id="test-source" style="width:140px">
+              <option value="grid">Grid</option>
+              <option value="solar">Solar</option>
+              <option value="battery">Battery</option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <label>Battery level (%)</label>
+            <input type="number" id="test-battery" value="75" style="width:120px" />
+          </div>
+          <div class="setting-row">
+            <label>Solar generation (W)</label>
+            <input type="number" id="test-solar" value="800" style="width:120px" />
+          </div>
+          <button class="btn-primary" onclick="addTestReading()">Submit reading</button>
+          <div id="test-msg" class="hidden" style="color:#1D9E75;margin-top:10px;font-size:14px;"></div>
+        </div>
+      </div>
+
+      <!-- PROFILE PAGE -->
+      <div id="page-profile" class="page hidden">
+        <div class="page-header"><h2>Profile</h2></div>
+        <div class="profile-layout">
+          <!-- Photo card -->
+          <div class="section-card profile-photo-card">
+            <div class="avatar-wrap">
+              <div class="avatar-circle" id="profile-avatar-display">
+                <img id="profile-photo-img" src="" alt="" class="hidden" />
+                <span id="profile-initials">?</span>
+              </div>
+              <div class="avatar-overlay" onclick="document.getElementById('photo-input').click()">
+                <span>&#9998; Change</span>
+              </div>
+            </div>
+            <input type="file" id="photo-input" accept="image/*" class="hidden" onchange="handlePhotoUpload(event)" />
+            <div id="profile-name-display" class="profile-name">—</div>
+            <div id="profile-email-display" class="profile-email">—</div>
+            <div id="profile-joined" class="profile-joined">Joined —</div>
+          </div>
+
+          <!-- Edit card -->
+          <div class="profile-right">
+            <div class="section-card">
+              <div class="section-header">
+                <h3>Personal information</h3>
+                <button class="btn-sm" id="edit-toggle-btn" onclick="toggleProfileEdit()">Edit</button>
+              </div>
+              <!-- View mode -->
+              <div id="profile-view-mode">
+                <div class="profile-field">
+                  <div class="profile-field-label">Full name</div>
+                  <div class="profile-field-value" id="pv-name">—</div>
+                </div>
+                <div class="profile-field">
+                  <div class="profile-field-label">Email address</div>
+                  <div class="profile-field-value" id="pv-email">—</div>
+                </div>
+                <div class="profile-field">
+                  <div class="profile-field-label">Account created</div>
+                  <div class="profile-field-value" id="pv-created">—</div>
+                </div>
+                <div class="profile-field" style="border:none">
+                  <div class="profile-field-label">Alert thresholds</div>
+                  <div class="profile-field-value" id="pv-thresholds">—</div>
+                </div>
+              </div>
+              <!-- Edit mode -->
+              <div id="profile-edit-mode" class="hidden">
+                <div class="profile-field">
+                  <div class="profile-field-label">Full name</div>
+                  <input type="text" id="edit-name" placeholder="Your name" />
+                </div>
+                <div class="profile-field" style="border:none">
+                  <div class="profile-field-label">Email address</div>
+                  <input type="email" id="edit-email" placeholder="your@email.com" />
+                </div>
+                <div id="profile-save-msg" class="hidden" style="color:#1D9E75;font-size:13px;margin-bottom:10px;">Saved successfully!</div>
+                <div style="display:flex;gap:8px;margin-top:4px">
+                  <button class="btn-secondary" onclick="toggleProfileEdit()">Cancel</button>
+                  <button class="btn-primary" onclick="saveProfile()">Save changes</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Stats card -->
+            <div class="section-card" style="margin-top:14px">
+              <h3 style="margin-bottom:1rem;font-size:15px;font-weight:600">Account stats</h3>
+              <div class="stat-grid" style="margin-bottom:0">
+                <div class="stat-card">
+                  <div class="stat-label">Devices</div>
+                  <div class="stat-value" id="pv-devices">—</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-label">Total alerts</div>
+                  <div class="stat-value" id="pv-alerts">—</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
